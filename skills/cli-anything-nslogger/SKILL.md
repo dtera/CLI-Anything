@@ -128,11 +128,11 @@ the CLI publishes a native macOS `NetService` with `_nslogger-ssl._tcp` and
 accepts TLS NSLogger frames. Use direct TCP/TLS only when the app is manually
 configured with the Mac host and port.
 
-### `repl` — Interactive Python REPL
+### `repl` — Interactive Command REPL
 
 ```bash
 cli-anything-nslogger repl session.rawnsloggerdata
-# Available: messages, parse_file, filter_messages, compute_stats, export_messages
+# Or launch it by running cli-anything-nslogger with no subcommand.
 ```
 
 ## Log Levels

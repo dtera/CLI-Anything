@@ -11,7 +11,7 @@ setup(
     python_requires=">=3.10",
     packages=find_namespace_packages(include=["cli_anything.*"]),
     package_data={
-        "cli_anything.nslogger": ["helpers/*.swift"],
+        "cli_anything.nslogger": ["helpers/*.swift", "skills/*.md"],
     },
     install_requires=[
         "click>=8.0",
@@ -28,4 +28,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: MacOS",
     ],
+    include_package_data=True,
+    zip_safe=False,
 )

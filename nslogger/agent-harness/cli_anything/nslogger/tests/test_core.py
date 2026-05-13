@@ -9,7 +9,9 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
+from click.testing import CliRunner
 
+import cli_anything.nslogger.nslogger_cli as nslogger_cli
 from cli_anything.nslogger.core.message import (
     LogMessage, MSG_TYPE_LOG, MSG_TYPE_CLIENT_INFO, MSG_TYPE_BLOCK_START, MSG_TYPE_BLOCK_END,
     LEVEL_NAMES,
@@ -884,3 +886,37 @@ class TestListenOutputFile:
             f.write("two\n")
 
         assert path.read_text(encoding="utf-8") == "one\ntwo\n"
+
+
+class TestCliDualMode:
+    def test_root_invokes_repl_when_no_subcommand(self, monkeypatch):
+        called = {}
+
+        def fake_run_repl(ctx, file=None):
+            called["ctx"] = ctx
+            called["file"] = file
+
+        monkeypatch.setattr(nslogger_cli, "_run_repl", fake_run_repl)
+
+        result = CliRunner().invoke(nslogger_cli.cli, [])
+
+        assert result.exit_code == 0
+        assert called["file"] is None
+        assert called["ctx"].invoked_subcommand is None
+
+    def test_repl_command_uses_shared_repl_dispatch(self, monkeypatch, tmp_path):
+        called = {}
+        log_file = tmp_path / "sample.rawnsloggerdata"
+        log_file.write_bytes(b"placeholder")
+
+        def fake_run_repl(ctx, file=None):
+            called["ctx"] = ctx
+            called["file"] = file
+
+        monkeypatch.setattr(nslogger_cli, "_run_repl", fake_run_repl)
+
+        result = CliRunner().invoke(nslogger_cli.cli, ["repl", str(log_file)])
+
+        assert result.exit_code == 0
+        assert called["file"] == str(log_file)
+        assert called["ctx"].info_name == "repl"

@@ -1,6 +1,7 @@
 """cli-anything-nslogger — CLI harness for NSLogger."""
 from __future__ import annotations
 import json
+import shlex
 import sys
 import os
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from .core.filter import filter_messages
 from .core.stats import compute_stats
 from .core.exporter import export_messages
 from .core.message import LEVEL_NAMES, MSG_TYPE_CLIENT_INFO
+from .utils.repl_skin import ReplSkin
 
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
@@ -76,9 +78,10 @@ def _open_live_output_file(path: str, append: bool):
     return open(path, mode, encoding="utf-8", buffering=1)
 
 
-@click.group(context_settings=CONTEXT_SETTINGS)
+@click.group(invoke_without_command=True, context_settings=CONTEXT_SETTINGS)
 @click.version_option(package_name="cli-anything-nslogger")
-def cli():
+@click.pass_context
+def cli(ctx):
     """NSLogger CLI — read, filter, export, and monitor NSLogger log files.
 
     \b
@@ -95,6 +98,9 @@ def cli():
       --output-format text|jsonl Write text lines or JSON Lines
       --append                   Append instead of replacing FILE on startup
     """
+    ctx.ensure_object(dict)
+    if ctx.invoked_subcommand is None:
+        _run_repl(ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -513,38 +519,118 @@ def merge(files, output, fmt, level):
 
 
 # ---------------------------------------------------------------------------
-# repl (interactive shell)
+# repl (interactive command shell)
 # ---------------------------------------------------------------------------
+
+_REPL_COMMANDS = {
+    "read [FILE]": "Display parsed messages",
+    "filter [FILE] [OPTIONS]": "Filter messages by level, tag, thread, text, regex, or range",
+    "tail [FILE]": "Show the last messages from a file",
+    "stats [FILE]": "Show summary statistics",
+    "clients [FILE]": "List client_info records",
+    "blocks [FILE]": "Show block start/end nesting",
+    "export [FILE] --format json": "Export messages as text, JSON, or CSV",
+    "merge FILE...": "Merge files by timestamp",
+    "generate OUTPUT": "Generate a sample raw NSLogger file",
+    "listen [OPTIONS]": "Listen for live NSLogger clients",
+    "load FILE": "Set the default file for file-based commands",
+    "current": "Show the current default file",
+    "help": "Show this help",
+    "quit / exit": "Exit the REPL",
+}
+
+_FILE_COMMANDS = {"read", "filter", "tail", "stats", "clients", "blocks", "export"}
+
+
+def _run_repl(ctx, file: Optional[str] = None):
+    """Launch the shared cli-anything REPL and dispatch commands through Click."""
+    skin = ReplSkin("nslogger", version="0.1.0")
+    skin.print_banner()
+
+    current_file = file
+    if current_file:
+        try:
+            message_count = sum(1 for _ in parse_file(current_file))
+            skin.success(f"Loaded {message_count} messages from {current_file}")
+        except Exception as exc:
+            skin.error(f"Could not load {current_file}: {exc}")
+            current_file = None
+
+    session = skin.create_prompt_session()
+
+    while True:
+        context = os.path.basename(current_file) if current_file else ""
+        try:
+            user_input = skin.get_input(session, context=context)
+        except (EOFError, KeyboardInterrupt):
+            skin.print_goodbye()
+            break
+
+        if not user_input:
+            continue
+
+        raw = user_input.strip()
+        command = raw.lower()
+
+        if command in ("quit", "exit", "q"):
+            skin.print_goodbye()
+            break
+
+        if command in ("help", "h", "?"):
+            skin.help(_REPL_COMMANDS)
+            continue
+
+        try:
+            args = shlex.split(raw)
+        except ValueError as exc:
+            skin.error(f"Parse error: {exc}")
+            continue
+
+        if not args:
+            continue
+
+        if args[0] == "load":
+            if len(args) != 2:
+                skin.error("Usage: load FILE")
+                continue
+            if not os.path.exists(args[1]):
+                skin.error(f"File not found: {args[1]}")
+                continue
+            current_file = args[1]
+            try:
+                message_count = sum(1 for _ in parse_file(current_file))
+                skin.success(f"Loaded {message_count} messages from {current_file}")
+            except Exception as exc:
+                skin.error(f"Could not load {current_file}: {exc}")
+                current_file = None
+            continue
+
+        if args[0] == "current":
+            if current_file:
+                skin.status("File", current_file)
+            else:
+                skin.info("No default file loaded.")
+            continue
+
+        if args[0] in _FILE_COMMANDS and current_file and (len(args) == 1 or args[1].startswith("-")):
+            args.insert(1, current_file)
+
+        try:
+            cli.main(args=args, obj=ctx.obj, standalone_mode=False)
+        except SystemExit:
+            pass
+        except click.exceptions.ClickException as exc:
+            skin.error(exc.format_message())
+        except Exception as exc:
+            skin.error(str(exc))
+
 
 @cli.command()
 @click.argument("file", type=click.Path(exists=True), required=False)
-def repl(file):
-    """Start an interactive REPL for exploring NSLogger files."""
-    try:
-        import code
-        import readline  # noqa: F401
-    except ImportError:
-        pass
-
-    context = {}
-    if file:
-        msgs = list(parse_file(file))
-        context["messages"] = msgs
-        context["file"] = file
-        click.echo(f"Loaded {len(msgs)} messages from {file}")
-        click.echo("Available: messages, filter_messages, compute_stats, export_messages")
-    else:
-        click.echo("NSLogger REPL — no file loaded. Use: messages = list(parse_file('x.rawnsloggerdata'))")
-
-    context.update({
-        "parse_file": parse_file,
-        "filter_messages": filter_messages,
-        "compute_stats": compute_stats,
-        "export_messages": export_messages,
-    })
-
-    import code as _code
-    _code.interact(local=context, banner="")
+@click.pass_context
+def repl(ctx, file):
+    """Start an interactive command REPL for NSLogger files."""
+    _run_repl(ctx, file=file)
 
 
 def main():

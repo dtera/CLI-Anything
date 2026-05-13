@@ -42,7 +42,8 @@ cli-anything-nslogger listen --bonjour --name bazinga --output app.log
 # Write machine-readable live logs as JSON Lines
 cli-anything-nslogger listen --bonjour --name bazinga --output app.jsonl --output-format jsonl
 
-# Interactive REPL
+# Interactive command REPL
+cli-anything-nslogger
 cli-anything-nslogger repl sample.rawnsloggerdata
 ```
 
@@ -65,7 +66,7 @@ cli-anything-nslogger stats sample.rawnsloggerdata --json
 | `stats`   | Summary statistics |
 | `listen`  | Receive live NSLogger connections via Bonjour or TCP/TLS |
 | `generate`| Create sample `.rawnsloggerdata` for testing |
-| `repl`    | Interactive Python REPL with loaded messages |
+| `repl`    | Interactive command REPL with shared cli-anything skin |
 
 ## Log Levels
 
